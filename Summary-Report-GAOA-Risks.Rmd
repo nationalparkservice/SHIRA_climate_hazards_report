@@ -1,0 +1,388 @@
+---
+title: "GAOA Project Risks - Summary Report"
+author: "Garrett Knowlton"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+```
+
+```{r load packages, include=FALSE}
+library(sf);library(tidyverse);library(flextable);library(ggrepel)
+```
+
+
+
+```{r variable creation, include=FALSE}
+#summary maps
+
+load("shira.RData")
+
+regions <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Documents\\GIS\\CF_maps\\nps-regions.shp")
+regions <-  st_transform(x=regions,crs = "NAD83")
+region_geometry <- st_geometry(regions)
+
+states <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Documents\\GIS\\State_Shapefile\\States_NAD83_Albers.shp")
+states <- st_transform(x=states,crs = "NAD83")
+
+states_geometry <- st_geometry(states)
+
+PRVI <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Desktop\\PR_VI\\PR_VI.shp")
+PRVI <- st_transform(x=PRVI,crs = "NAD83")
+PRVI_geometry <- st_geometry(PRVI)
+
+point_crs <- st_crs(regions)
+
+#shira_df <- read.csv("FY23GAOAshiraHazdf.csv")
+#shira_df$Raw <- as.numeric(shira_df$Raw)
+
+FY23_projs <- st_as_sf(FY23GAOAshiraHazdf, coords = c("Long", "Lat"), crs = point_crs)
+
+FY23_projs <- distinct(FY23_projs, Park,.keep_all = T)
+codes <- c("BICR","BOST","CHCH","CLBA","DEWA","EVER","FOSU","GATE","GLCA","GOGA","GRBA","GRCA","HAVO","HOSP","INDE","INDU","MIIN","NAMA","NATR","NERI","PEFO","PIRO","SAFR","VIIS","WICR","YELL")
+FY23_projs$Park_Code <- codes
+
+FY23_projs_coords <- extract(FY23_projs, geometry, into = c('Lat', 'Lon'), '\\((.*),(.*)\\)', conv = T)
+FY23_projs_coords <- FY23_projs_coords %>% 
+  select(Park,State,Hazard,Risk,Lat,Lon,Park_Code)
+
+
+# risk count summaries
+head(FY23GAOAshiraHazdf)
+
+risk_count <- FY23GAOAshiraHazdf %>% 
+  mutate(count = if_else(Risk %in% c("Susceptible to Landslides","Susceptible to Flooding","Moderate","Very High", "High"), 1, 0))
+  
+risk_totals <- aggregate(risk_count$count, by=list(Park=risk_count$Park), FUN=sum)
+
+risk_totals <- risk_totals %>% 
+  rename(Risks = x)
+
+# synth map
+
+FY23_projs <- FY23_projs %>% 
+  mutate(Risks = risk_totals$Risk)
+
+
+SHIRA_table<- FY23GAOAshiraHazdf %>% mutate(Risk = ifelse(Risk %in% c("Susceptible to Flooding","Susceptile to Landslides", "Moderate","High","Very High"),
+                                                   Risk, NA)) %>% select(-c(Lat, Long, State, Raw)) %>% 
+  pivot_wider(names_from = Hazard, values_from = Risk)
+
+SHIRA_table <- SHIRA_table %>% 
+  mutate(Park_Code = codes)
+
+SHIRA_table <- SHIRA_table[order(rowSums(is.na(SHIRA_table))), ]
+SHIRA_table <- SHIRA_table[,order(colSums(is.na(SHIRA_table))) ]
+
+SHIRA_table
+
+# np vuln bar plot
+
+npvuln <- read.csv("NPVuln_Park_Database for external review.csv") %>% 
+  filter(code %in% c("BICR","BOST","CHCH","CLBA","DEWA","EVER","FOSU","GATE","GLCA","GOGA","GRBA","GRCA","HAVO","HOSP","INDE","INDU","MIIN","NAMA","NATR","NERI","PEFO","PIRO","SAFR","VIIS","WICR","YELL")) %>% 
+  select(code,Name,State, High.impact.current.fire,High.impact.projected.fire,High.impact.summer.drought,High.impact.sea.level.or.surge,High.impact.forest.pest,) 
+
+for (i in 1:nrow(npvuln)) {
+   npvuln$sum_risk[i] <- (npvuln$High.impact.current.fire[i] + npvuln$High.impact.projected.fire[i]  + npvuln$High.impact.summer.drought[i] + npvuln$High.impact.sea.level.or.surge[i] + npvuln$High.impact.forest.pest[i])
+}
+
+# Missing BICR & NERI
+
+risk_totals_npvuln <- risk_totals 
+
+codes <- c("BICR","BOST","CHCH","CLBA","DEWA","EVER","FOSU","GATE","GLCA","GOGA","GRBA","GRCA","HAVO","HOSP","INDE","INDU","MIIN","NAMA","NATR","NERI","PEFO","PIRO","SAFR","VIIS","WICR","YELL")
+risk_totals_npvuln$Park_Code <- codes
+
+
+risk_totals_npvuln <- risk_totals_npvuln %>% 
+  filter(Park_Code %in% c("BOST","CHCH","CLBA","DEWA","EVER","FOSU","GATE","GLCA","GOGA","GRBA","GRCA","HAVO","HOSP","INDE","INDU","MIIN","NAMA","NATR","PEFO","PIRO","SAFR","VIIS","WICR","YELL"))
+
+risk_totals_npvuln <- risk_totals_npvuln%>% 
+  mutate(npv_risks = npvuln$sum_risk)
+
+# np vuln summary table
+
+FY23_projs_npvuln <- FY23_projs %>% 
+  filter(Park_Code %in% c("BOST","CHCH","CLBA","DEWA","EVER","FOSU","GATE","GLCA","GOGA","GRBA","GRCA","HAVO","HOSP","INDE","INDU","MIIN","NAMA","NATR","PEFO","PIRO","SAFR","VIIS","WICR","YELL")) 
+  
+FY23_projs_npvuln <- FY23_projs_npvuln %>% 
+  mutate(npvuln_risks = npvuln$sum_risk)
+
+FY23_projs_coords_np <- extract(FY23_projs_npvuln, geometry, into = c('Lat', 'Lon'), '\\((.*),(.*)\\)', conv = T)
+FY23_projs_coords_np <- FY23_projs_coords_np %>% 
+  select(Park,State,Hazard,Risk,Lat,Lon,Park_Code)
+
+# risk totals all 
+
+risk_totals_all <- risk_totals_npvuln %>% 
+  rename("shira_risks" = Risks)
+
+
+npvuln_table <- npvuln %>% 
+  na_if(., 0) %>% 
+  select(-sum_risk)
+
+npvuln_table <- npvuln_table[order(rowSums(is.na(npvuln_table))), ]
+npvuln_table <- npvuln_table[,order(colSums(is.na(npvuln_table))) ]
+
+npvuln_table <- npvuln_table %>% 
+  rename("Projected Fire" = High.impact.projected.fire,
+         "Current Fire" = High.impact.current.fire,
+         "Forest Pest" = High.impact.forest.pest,
+         "Summer Drought" = High.impact.summer.drought,
+         "Sea Level or Surge" = High.impact.sea.level.or.surge)
+
+
+
+```
+
+
+
+# Major Risks for FY23 GAOA-Funded Projects
+
+# **Risk Descriptions**
+## SHIRA Risk Descriptions:
+
+**Geophysical: Riverine Flooding (National Flood Hazard Layer)**	
+
+This map shows flood hazard zones contained in the Federal Emergency Management Agency (FEMA) National Flood Hazard Layer (NFHL), which is a geospatial database that contains current effective flood hazard data to support the National Flood Insurance Program (NFIP). The NFHL is designed only to support the NFIP; therefore, its coverage on DOI and tribal lands of interest is limited due to the lack of flood insurance on federal lands. Polygonal NFHL data were acquired via the FEMA Map Service Center. Based on FEMA guidance, flood-hazard zones were classified as low to moderate flood risk for areas delineated as a 0.2-percent-annual-chance (or 500-year) flood and as high flood risk for floodways and areas with 1-percent annual chance (or 100-year) flood. Areas are noted as "susceptible to flooding" in this map if they are identified as high flood risk areas in the NFHL data (zones A and V and subclasses) and are classified as a "5" in the SHIRA relative hazard ranking scale of 1 to 5 (i.e., noting simply the presence of that hazard). Data are available for the conterminous United States, Alaska, Hawaii, Puerto Rico, and U.S. Territories.
+
+**Geophysical: Riverine Flooding (USGS analysis)**	
+
+This map shows areas susceptible to flooding based on USGS modeling of 30-meter digital elevation models, stream network lines, associated basins, flow direction grids, and National Water Model Maximum Flows for the last 20 years for all available flow lines. The geospatial input data used in the USGS flood modeling can be found in the National Hydrography Dataset (NHD Plus version 2). Areas are noted as "susceptible to flooding" and are classified as a "5" in the SHIRA relative hazard ranking scale of 1 to 5 (i.e., noting simply the presence of that hazard). Data are available for the conterminous United States.
+
+**Geophysical: Landslide**	
+
+This map shows a prototype landslide hazard map of the conterminous United States that was developed by the USGS Landslide Hazards Program and originally published in 2012 as a journal article. The data is presented as 1-km grid cells, which denote the presence or absence of conditions that are favorable for landslides. Grid cells considered to have a landslide hazard were classified as a “5” on a relative 1 to 5 scale (i.e., noting simply the presence of that high hazard). Data are available for the conterminous United States.
+
+**Weather: Drought**	
+
+This map shows the historic occurrence of drought for each week from 2000 to 2021. Only areas classified as moderate, severe, extreme, and exceptional are included in the analysis. Original data come from the Drought Monitor, which is produced jointly by the National Drought Mitigation Center (NDMC) at the University of Nebraska-Lincoln, The National Oceanic and Atmospheric Administration (NOAA), and the U.S. Department of Agriculture (USDA). Data are aggregated at approximately the county level and classified using five equal interval bins to show historic occurrence across the United States. Counties are labelled as having a very low (bin 1), low (bin 2), moderate (bin 3), high (bin 4), or very high (bin 5) number of droughts during this time period.Data are available for the conterminous United States, Alaska, Hawaii, Puerto Rico, and U.S. Territories.
+
+**Weather: Extreme Heat**
+
+This map shows the historic occurrence of National Weather Service (NWS) extreme heat warnings from 1986 to 2021. Only one warning per county per day for the phenomena of excessive heat (EH) and heat (HT) are included in the analysis. Original data come from Iowa State University's Iowa Environmental Mesonet, which is an archive of NWS watches and warnings. Data are mapped at the county level and are classified using five equal interval bins to show historic occurrence across the United States. Counties are labelled as having a very low (bin 1), low (bin 2), moderate (bin 3), high (bin 4), or very high (bin 5) number of NWS extreme heat warnings during this time period.Data are available for the conterminous United States.
+
+**Wildland Fire**	
+
+This map shows wildfire potential in the conterminous United States, Alaska, and Hawaii based on the 2020 version of the Wildfire Hazard Potential (WHP) map by the U.S. Forest Service Fire, Fuel, and Smoke Science Program. Original data are mapped at a 270-meter grid. Grid cells are classified on a relative scale from 1 to 5 for very low (1), low (2), moderate (3), high (4), and very high (5). The 2020 version was built by integrating national spatial datasets of wildfire burn probability and fire intensity from LANDFIRE 2014 using the Large Fire Simulator (FSim), as well as spatial fuels and vegetation data from LANDFIRE 2014 and point locations of past fire occurrence from 1992 to 2015.
+
+
+
+## NPVuln Risk Descriptions:
+
+**Current Fire**
+
+High impact assessment current fire hazard (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Projected Fire**
+
+High impact assessment projected fire change (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Forest Pest**
+
+High impact assessment forest pest and disease risk (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Summer Drought**
+
+High impact assessment summer drought (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Sea Level or Storm Surge**
+
+High impact assessment combined sea level rise and/or storm surge (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+
+
+
+
+```{r produce variables, include=FALSE}
+
+
+
+
+
+
+```
+
+
+
+
+## GAOA-Funded Projects
+```{r project locations, echo=FALSE, results='hide', message=FALSE}
+
+ggplot() + 
+  geom_sf(data = states,color="black",fill="tan") + 
+  geom_sf(data = PRVI,color="black",fill="tan") + 
+  geom_sf(data = FY23_projs,color="red", fill="red") +
+  geom_label_repel(data = FY23_projs_coords, aes(x = Lat, y = Lon, label = Park_Code), 
+                   size = 2,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
+  ggtitle("GAOA-Funded Projects in FY23") +
+  coord_sf()
+
+```
+
+## Risk Count Summaries 
+```{r risk count summaries, echo=FALSE, results='hide', message=FALSE}
+
+g <- ggplot(risk_totals, aes(Risks,Park)) + 
+  geom_col() +
+  labs(x = "Notable Risks", y = "NPS Unit",title = "GAOA Project SHIRA Risks")
+g
+
+
+
+g2 <- ggplot(risk_totals_npvuln, aes(npv_risks,Park)) + 
+  geom_col() +
+  labs(x = "Notable Risks", y = "NPS Unit",title = "GAOA Project NPVuln Risks", 
+       caption = "(Data not available for Hawai'i Volcanoes and Virgin Islands National Parks)")
+g2
+
+```
+
+## Risk Maps
+
+```{r risk count maps, echo=FALSE, results='hide', message=FALSE}
+
+g3 <- ggplot() + 
+  geom_sf(data = states,color="black",fill="tan") + 
+  geom_sf(data = PRVI,color="black",fill="tan") + 
+  geom_sf(data = FY23_projs,aes(size=Risks,fill=Risks),color="black", pch=21) +
+   geom_label_repel(data = FY23_projs_coords, aes(x = Lat, y = Lon, label = Park_Code), 
+                   size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
+  ggtitle("Major Climate Risks (SHIRA)") +
+  guides(fill="legend") +
+  coord_sf()+
+    theme(legend.position="bottom")
+g3
+
+
+g4 <- ggplot() + 
+  geom_sf(data = states,color="black",fill="tan") + 
+  geom_sf(data = PRVI,color="black",fill="tan") + 
+  geom_sf(data = FY23_projs_npvuln,aes(size=npvuln_risks,fill=npvuln_risks),color="black", pch=21) +
+   geom_label_repel(data = FY23_projs_coords_np, aes(x = Lat, y = Lon, label = Park_Code), 
+                   size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
+  ggtitle("Major Climate Risks (NPVuln)") +
+  guides(fill="legend") +
+  coord_sf()+
+    theme(legend.position="bottom")
+g4
+
+```
+\newpage
+#SHIRA Summary Table
+
+```{r summary_table_1,echo=FALSE, message=FALSE}
+
+dset1 <- SHIRA_table %>% 
+  select(-Park) %>% 
+  rename(
+    "Riverine Flooding (USGS)" = `Geophysical: Riverine Flooding (USGS analysis)`,
+    "Riverine Flooding (NFHL)" = `Geophysical: Riverine Flooding (National Flood Hazard Layer)`,
+    "Drought" = `Weather: Drought`,
+    "Extreme Heat" = `Weather: Extreme Heat`,
+    "Landslide" = `Geophysical: Landslide`,
+    "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`,
+    "Park" = Park_Code
+  ) 
+
+dset1$`Riverine Flooding (USGS)`[dset1$`Riverine Flooding (USGS)` == "Susceptible to Flooding"] <- "Susceptible"  
+dset1$`Riverine Flooding (NFHL)`[dset1$`Riverine Flooding (NFHL)` == "Susceptible to Flooding"] <- "Susceptible"  
+
+#knitr::kable(dset1)
+
+set_flextable_defaults(
+  font.family = "Arial", font.size = 8, 
+  border.color = "gray")
+
+flextable(dset1) %>% 
+  theme_vanilla() 
+
+
+
+```
+
+\newpage
+#NPVuln Summary Table
+```{r summary_table_2,echo=FALSE, message=FALSE}
+
+dset2 <- npvuln_table %>% 
+  select(-Name,-State) %>% 
+  rename("Park" = code)
+
+set_flextable_defaults(
+  font.family = "Arial", font.size = 8, 
+  border.color = "gray")
+
+flextable(dset2) %>% 
+  theme_vanilla()
+
+```
+
+
+\newpage
+
+```{r scatter,echo=FALSE, message=FALSE}
+
+risk_scatter <- ggplot(risk_totals_all, aes(shira_risks,npv_risks)) +
+  geom_point() +
+  geom_text_repel(data = risk_totals_all, aes(x = shira_risks, y = npv_risks, label = Park_Code), 
+                   size = 2,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) 
+  
+risk_scatter
+
+```
+
+
+
+\newpage
+
+#SHIRA Risk Histogram
+
+```{r shira_histogram,echo=FALSE, message=FALSE}
+
+SHIRA_table
+
+shira_hist <- ggplot(SHIRA_table, aes(x=,y=)) +
+  geom_histogram()
+
+```
+
+
+#NPVuln Risk Histogram
+
+```{r npvuln_histogram,echo=FALSE, message=FALSE}
+
+npvuln
+
+npvuln_hist <- ggplot(npvuln, aes(x=,y=)) +
+  geom_histogram()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
