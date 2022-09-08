@@ -1,6 +1,6 @@
 ---
 title: "GAOA Project Risks - Summary Report"
-author: "Garrett Knowlton"
+author: "Climate Change Response Program"
 date: "`r Sys.Date()`"
 output:
   pdf_document: default
@@ -17,7 +17,10 @@ knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
 library(sf);library(tidyverse);library(flextable);library(ggrepel)
 ```
 
+## Description
+This report uses data from the Strategic Hazard Identification and Risk Assessment (SHIRA)<https://doimspp.sharepoint.com/sites/usgs-shira_home?CT=1662061010120&OR=OWA-NT&CID=0ee76a98-796e-fb71-9009-9b62065909ef&siteid={1F7D3CEC-5199-4FCC-B48D-7547F7B5ECCC}&webid={74AA7F54-8DFD-4C4D-89FC-656456FA443C}&uniqueid={8E44D40A-4172-4C17-8F15-22787444980F}> tool and NPVuln<https://www.nps.gov/subjects/climatechange/npvuln.htm> to identify potential climate change-related hazards for facility investment projects. 
 
+Because the FY24-25 LRF list of candidate projects for NRSS climate change vulnerability assessments did not include FBMS facility coordinates, _these results represent park-level exposure._ Site-specific sensitivies can be assessed once coordinates are provided. 
 
 ```{r variable creation, include=FALSE}
 #summary maps
