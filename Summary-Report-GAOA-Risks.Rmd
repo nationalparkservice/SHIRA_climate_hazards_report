@@ -23,20 +23,56 @@ This report uses data from the Strategic Hazard Identification and Risk Assessme
 Because the FY24-25 LRF list of candidate projects for NRSS climate change vulnerability assessments did not include FBMS facility coordinates, _these results represent park-level exposure._ Site-specific sensitivies can be assessed once coordinates are provided. 
 
 ```{r variable creation, include=FALSE}
-#summary maps
+#Read in file data
+## These files will require manipulation to get down to a long-format df 
+GAOA.file <- "C:/Users/achildress/DOI/CCRP COLLABORATE! - CCRP COLLABORATE!/01 PROJECT Collaboration/Facilities/GAOA_SHIRA Reviewing/"
 
-load("shira.RData")
+Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candidate_Projects_for_CCVA.csv")) %>% drop_na() %>% 
+  mutate(UNIT_CODE = Park, UNIT_CODE = recode(UNIT_CODE, 'SEKI' = 'SEQU', 'NACE' = 'NACA', 'NAMA' = 'NACA')) %>% 
+  left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE") 
 
-regions <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Documents\\GIS\\CF_maps\\nps-regions.shp")
+NPVuln.data <- read.csv("./NPVuln_Park_Data.csv")
+
+Hazard.codes <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/Hazard_Codes.csv")) %>% filter(Type == "Class Breaks (1-5)")
+Hazards.lookup <- read.csv("./climate_hazards_lookup.csv")
+Shira.hazard.names <- data.frame(Risk = c("No Hazard Exposure","Very Low","Low","Moderate","High","Very High"), Raw = seq(0,5,1))
+
+
+Shira.data <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/PAM_Owned Buildings and Structures.csv")) %>% filter(Bureau_alt == "NPS") %>% 
+  select(-contains("VAL")) %>%
+  rename_with(.cols = Hazard.codes$Hazard.Code, .fn = function(x) Hazard.codes$Name[Hazard.codes$Hazard.Code %in% x]) %>% 
+  rename(UNIT_CODE = Installati) %>% mutate(Shira.ID = row_number())
+
+# There's probably a better way to subset Shira to closest lat/lon of Project data but this is what worked...
+closest_Shira <- function(lat, lon) {
+  index <- which.min(sqrt((Shira.data$Latitude-lat)^2 + (Shira.data$Longitude-lon)^2)) # less precise but likely good enough
+  Shira.data[index,]$Shira.ID
+}
+
+for (i in 1:nrow(Project.data)){
+  Project.data$Shira.ID[i] <- closest_Shira(Project.data$Lat[i], Project.data$Lon[i])
+}
+
+Shira.climate.hazards <- Shira.data %>% filter(Shira.ID %in% Project.data$Shira.ID) %>% 
+  left_join(Project.data[,c("ID","Shira.ID")], by="Shira.ID") %>% 
+  pivot_longer(-c(1:28,61:62), values_to = "Raw", names_to = "Hazard") %>% 
+  filter(Hazard %in% Hazards.lookup$SHIRA.Hazards) %>% 
+  left_join(Shira.hazard.names,by="Raw") %>% 
+  select(UNIT_CODE,ID,Latitude,Longitude,STATE,Hazard,Risk,Raw) %>% 
+  rename(Park=UNIT_CODE,State=STATE)%>% 
+  mutate(Risk = ifelse((grepl("Geophysical", Hazard, fixed=TRUE) & Raw==5), "Susceptible", Risk))
+
+#Summary maps
+## GIS files
+regions <- st_read(paste0(GAOA.file,"GIS_files/nps-regions/nps-regions.shp"))
 regions <-  st_transform(x=regions,crs = "NAD83")
 region_geometry <- st_geometry(regions)
 
-states <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Documents\\GIS\\State_Shapefile\\States_NAD83_Albers.shp")
+states <- st_read(paste0(GAOA.file,"GIS_files/State_Shapefile/States_NAD83_Albers.shp"))
 states <- st_transform(x=states,crs = "NAD83")
-
 states_geometry <- st_geometry(states)
 
-PRVI <- st_read("C:\\Users\\gknowlton\\OneDrive - DOI\\Desktop\\PR_VI\\PR_VI.shp")
+PRVI <- st_read(paste0(GAOA.file,"GIS_files/PR_VI/PR_VI.shp"))
 PRVI <- st_transform(x=PRVI,crs = "NAD83")
 PRVI_geometry <- st_geometry(PRVI)
 
