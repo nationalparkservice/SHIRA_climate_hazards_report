@@ -1,11 +1,10 @@
 ---
-title: "GAOA Project Risks - Summary Report"
+title: "FY24-25 LRF Candidate Project Risks - Summary Report"
 author: "Climate Change Response Program"
 date: "`r Sys.Date()`"
 output:
-  word_document: default
-  pdf_document: default
-  html_document:
+  word_document: 
+    reference_docx: "template.docx"
     df_print: paged
 ---
 
@@ -19,7 +18,7 @@ library(sf);library(tidyverse);library(flextable);library(ggrepel)
 
 ## Description
 
-This report uses data from the Strategic Hazard Identification and Risk Assessment (SHIRA)<https://doimspp.sharepoint.com/sites/usgs-shira_home?CT=1662061010120&OR=OWA-NT&CID=0ee76a98-796e-fb71-9009-9b62065909ef&siteid=%7B1F7D3CEC-5199-4FCC-B48D-7547F7B5ECCC%7D&webid=%7B74AA7F54-8DFD-4C4D-89FC-656456FA443C%7D&uniqueid=%7B8E44D40A-4172-4C17-8F15-22787444980F%7D> tool and NPVuln<https://www.nps.gov/subjects/climatechange/npvuln.htm> to identify potential climate change-related hazards for facility investment projects.
+This report uses data from the Strategic Hazard Identification and Risk Assessment [SHIRA](https://doimspp.sharepoint.com/sites/usgs-shira_home?CT=1662061010120&OR=OWA-NT&CID=0ee76a98-796e-fb71-9009-9b62065909ef&siteid=%7B1F7D3CEC-5199-4FCC-B48D-7547F7B5ECCC%7D&webid=%7B74AA7F54-8DFD-4C4D-89FC-656456FA443C%7D&uniqueid=%7B8E44D40A-4172-4C17-8F15-22787444980F%7D) tool and [NPVuln](https://www.nps.gov/subjects/climatechange/npvuln.htm) to identify potential climate change-related hazards for facility investment projects.
 
 Because the FY24-25 LRF list of candidate projects for NRSS climate change vulnerability assessments did not include FBMS facility coordinates, *these results represent park-level exposure.* Site-specific sensitivies can be assessed once coordinates are provided.
 
@@ -85,6 +84,7 @@ FY24_projs <- distinct(FY24_projs, ID,.keep_all = T)
 
 
 FY24_projs_coords <- extract(FY24_projs, geometry, into = c('Lat', 'Lon'), '\\((.*),(.*)\\)', conv = T)
+FY24_projs_coords <- FY24_projs_coords[ -c(10) ]
 
 
 # risk count summaries
@@ -225,7 +225,7 @@ High impact assessment combined sea level rise and/or storm surge (1 indicates t
 
 \newpage
 
-```{r scatter,echo=FALSE, message=FALSE}
+```{r scatter,echo=FALSE, message=FALSE, fig.height = 7, fig.width = 10}
 
 risk_scatter <- ggplot(risk_totals_all, aes(shira_risks,npv_risks)) +
   geom_point() +
@@ -241,7 +241,7 @@ risk_scatter
 ## Risk Maps
 The following maps show the number of risks identified by SHIRA and NPVuln. Project ID corresponds with those identified in the FY24-25 LRF Candidate Projects List.
 
-```{r risk count maps, echo=FALSE, results='hide', message=FALSE}
+```{r risk count maps, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10}
 
 g3 <- ggplot() + 
   geom_sf(data = states,color="black",fill="tan") + 
@@ -260,7 +260,7 @@ g4 <- ggplot() +
   geom_sf(data = states,color="black",fill="tan") + 
   geom_sf(data = PRVI,color="black",fill="tan") + 
   geom_sf(data = FY24_projs_npvuln,aes(size=npvuln_risks,fill=npvuln_risks),color="black", pch=21) +
-   geom_label_repel(data = FY24_projs_coords_np, aes(x = Lat, y = Lon, label = Park_Code), 
+   geom_label_repel(data = FY24_projs_coords_np, aes(x = Lat, y = Lon, label = ID), 
                    size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
   ggtitle("Major Climate Risks (NPVuln)") +
   guides(fill="legend") +
@@ -269,93 +269,48 @@ g4 <- ggplot() +
 g4
 
 ```
-
-
-## GAOA-Funded Projects
-
-```{r project locations, echo=FALSE, results='hide', message=FALSE}
-
-ggplot() + 
-  geom_sf(data = states,color="black",fill="tan") + 
-  geom_sf(data = PRVI,color="black",fill="tan") + 
-  geom_sf(data = FY24_projs,color="red", fill="red") +
-  geom_label_repel(data = FY24_projs_coords, aes(x = Lat, y = Lon, label = ID), 
-                   size = 2,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
-  ggtitle("GAOA-Funded Projects in FY24") +
-  coord_sf()
-
-```
-
-## Risk Count Summaries
-
-```{r risk count summaries, echo=FALSE, results='hide', message=FALSE}
+## Risk Count Summaries 
+```{r risk count summaries, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10}
 
 g <- ggplot(risk_totals, aes(Risks,Park)) + 
   geom_col() +
-  labs(x = "Notable Risks", y = "NPS Unit",title = "GAOA Project SHIRA Risks")
+  labs(x = "Number of Notable Risks", y = "NPS Unit",title = "GAOA Project SHIRA Risks")
 g
 
+risk_totals_npvuln <- risk_totals_npvuln %>% 
+  arrange(.,npv_risks)
+
+# lock in factor level order
+risk_totals_npvuln$ID <- factor(risk_totals_npvuln$ID, levels = risk_totals_npvuln$ID)
 
 
-g2 <- ggplot(risk_totals_npvuln, aes(npv_risks,Park)) + 
+g2 <- ggplot(risk_totals_npvuln, aes(npv_risks,ID)) + 
   geom_col() +
-  labs(x = "Notable Risks", y = "NPS Unit",title = "GAOA Project NPVuln Risks", 
+  labs(x = "Number of Notable Risks", y = "NPS Unit",title = "GAOA Project NPVuln Risks", 
        caption = "(Data not available for Hawai'i Volcanoes and Virgin Islands National Parks)")
 g2
 
 ```
 
-## Risk Maps
-
-```{r risk count maps, echo=FALSE, results='hide', message=FALSE}
-
-g3 <- ggplot() + 
-  geom_sf(data = states,color="black",fill="tan") + 
-  geom_sf(data = PRVI,color="black",fill="tan") + 
-  geom_sf(data = FY24_projs,aes(size=Risks,fill=Risks),color="black", pch=21) +
-   geom_label_repel(data = FY24_projs_coords, aes(x = Lat, y = Lon, label = ID), 
-                   size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
-  ggtitle("Major Climate Risks (SHIRA)") +
-  guides(fill="legend") +
-  coord_sf()+
-    theme(legend.position="bottom")
-g3
-
-
-g4 <- ggplot() + 
-  geom_sf(data = states,color="black",fill="tan") + 
-  geom_sf(data = PRVI,color="black",fill="tan") + 
-  geom_sf(data = FY24_projs_npvuln,aes(size=npvuln_risks,fill=npvuln_risks),color="black", pch=21) +
-   geom_label_repel(data = FY24_projs_coords_np, aes(x = Lat, y = Lon, label = Park), 
-                   size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
-  ggtitle("Major Climate Risks (NPVuln)") +
-  guides(fill="legend") +
-  coord_sf()+
-    theme(legend.position="bottom")
-g4
-
-```
-
 \newpage
-
-\#SHIRA Summary Table
+#SHIRA Summary Table
 
 ```{r summary_table_1,echo=FALSE, message=FALSE}
 
 dset1 <- SHIRA_table %>% 
-  select(-Park) %>% 
   rename(
     "Riverine Flooding (USGS)" = `Geophysical: Riverine Flooding (USGS analysis)`,
     "Riverine Flooding (NFHL)" = `Geophysical: Riverine Flooding (National Flood Hazard Layer)`,
     "Drought" = `Weather: Drought`,
     "Extreme Heat" = `Weather: Extreme Heat`,
     "Landslide" = `Geophysical: Landslide`,
-    "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`,
-    "Park" = Park
+    "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`
   ) 
 
 dset1$`Riverine Flooding (USGS)`[dset1$`Riverine Flooding (USGS)` == "Susceptible to Flooding"] <- "Susceptible"  
 dset1$`Riverine Flooding (NFHL)`[dset1$`Riverine Flooding (NFHL)` == "Susceptible to Flooding"] <- "Susceptible"  
+
+dset1 <- arrange(dset1, across(c(2:ncol(dset1)),desc))
 
 #knitr::kable(dset1)
 
@@ -371,14 +326,13 @@ flextable(dset1) %>%
 ```
 
 \newpage
-
-\#NPVuln Summary Table
-
+#NPVuln Summary Table
 ```{r summary_table_2,echo=FALSE, message=FALSE}
 
-dset2 <- npvuln_table %>% 
-  select(-Name,-State) %>% 
-  rename("Park" = code)
+dset2 <- npvuln_table
+
+dset2 <- arrange(dset2, across(c(2:ncol(dset2)),desc))
+
 
 set_flextable_defaults(
   font.family = "Arial", font.size = 8, 
@@ -386,42 +340,5 @@ set_flextable_defaults(
 
 flextable(dset2) %>% 
   theme_vanilla()
-
-```
-
-\newpage
-
-```{r scatter,echo=FALSE, message=FALSE}
-
-risk_scatter <- ggplot(risk_totals_all, aes(shira_risks,npv_risks)) +
-  geom_point() +
-  geom_text_repel(data = risk_totals_all, aes(x = shira_risks, y = npv_risks, label = Park), 
-                   size = 2,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) 
-  
-risk_scatter
-
-```
-
-\newpage
-
-\#SHIRA Risk Histogram
-
-```{r shira_histogram,echo=FALSE, message=FALSE}
-
-SHIRA_table
-
-# shira_hist <- ggplot(SHIRA_table, aes(x=,y=)) +
-#   geom_histogram()
-
-```
-
-\#NPVuln Risk Histogram
-
-```{r npvuln_histogram,echo=FALSE, message=FALSE}
-
-npvuln
-
-# npvuln_hist <- ggplot(npvuln, aes(x=,y=)) +
-  # geom_histogram()
 
 ```
