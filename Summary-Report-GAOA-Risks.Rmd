@@ -31,10 +31,11 @@ Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candid
   mutate(UNIT_CODE = Park, UNIT_CODE = recode(UNIT_CODE, 'SEKI' = 'SEQU', 'NACE' = 'NACA', 'NAMA' = 'NACA')) %>% 
   left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE") 
 
-NPVuln.data <- read.csv("./NPVuln_Park_Data.csv")
-
 Hazard.codes <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/Hazard_Codes.csv")) %>% filter(Type == "Class Breaks (1-5)")
 Hazards.lookup <- read.csv("./climate_hazards_lookup.csv")
+
+
+## FOrmatting Shira data tables
 Shira.hazard.names <- data.frame(Risk = c("No Hazard Exposure","Very Low","Low","Moderate","High","Very High"), Raw = seq(0,5,1))
 
 
@@ -60,7 +61,29 @@ Shira.climate.hazards <- Shira.data %>% filter(Shira.ID %in% Project.data$Shira.
   left_join(Shira.hazard.names,by="Raw") %>% 
   select(UNIT_CODE,ID,Latitude,Longitude,STATE,Hazard,Risk,Raw) %>% 
   rename(Park=UNIT_CODE,State=STATE)%>% 
-  mutate(Risk = ifelse((grepl("Geophysical", Hazard, fixed=TRUE) & Raw==5), "Susceptible", Risk)) 
+  mutate(Risk = ifelse((grepl("Geophysical", Hazard, fixed=TRUE) & Raw==5), "Susceptible", Risk))
+
+
+## Formatting NPVuln data tables
+npvuln.data <- read.csv("./NPVuln_Park_Data.csv") %>% 
+  filter(code %in% unique(Project.data$Park)) %>% 
+  select(code,Name,State, Hazards.lookup$NPVuln.Hazards[grep("High", Hazards.lookup$NPVuln.Hazards)]) %>% 
+  rename(Park = code) 
+
+npvuln <- Project.data %>% select(Park,ID) %>% 
+  full_join(npvuln.data,by="Park",all=T)  %>% 
+  select(Park,ID, Hazards.lookup$NPVuln.Hazards[grep("High", Hazards.lookup$NPVuln.Hazards)])
+
+for (i in 1:nrow(npvuln)) {
+   npvuln$sum_risk[i] <- (npvuln$High.impact.current.fire[i] + npvuln$High.impact.projected.fire[i]  + npvuln$High.impact.summer.drought[i] + npvuln$High.impact.sea.level.or.surge[i] + npvuln$High.impact.forest.pest[i])
+}
+
+npvuln.climate.hazards <- npvuln %>% 
+
+# Combined tables
+
+
+
 
 #Summary maps
 ## GIS files
@@ -77,6 +100,9 @@ PRVI <- st_transform(x=PRVI,crs = "NAD83")
 PRVI_geometry <- st_geometry(PRVI)
 
 point_crs <- st_crs(regions)
+
+## Format tables 
+
 
 FY24_projs <- st_as_sf(Shira.climate.hazards, coords = c("Longitude", "Latitude"), crs = point_crs)
 
@@ -113,22 +139,6 @@ SHIRA_table <- SHIRA_table[,order(colSums(is.na(SHIRA_table))) ]
 SHIRA_table
 
 # np vuln bar plot
-unique(Project.data$Park)
-lookup <- read.csv("./climate_hazards_lookup.csv")
-NPV <- read.csv("./NPVuln_Park_Data.csv") %>% 
-  filter(code %in% unique(Project.data$Park)) %>% 
-  select(code,Name,State, lookup$NPVuln.Hazards[grep("High", lookup$NPVuln.Hazards)]) %>% 
-  rename(Park = code) 
-
-npvuln <- Project.data %>% select(Park,ID) %>% 
-  full_join(NPV,by="Park",all=T)  %>% 
-  select(Park,ID, lookup$NPVuln.Hazards[grep("High", lookup$NPVuln.Hazards)])
-
-for (i in 1:nrow(npvuln)) {
-   npvuln$sum_risk[i] <- (npvuln$High.impact.current.fire[i] + npvuln$High.impact.projected.fire[i]  + npvuln$High.impact.summer.drought[i] + npvuln$High.impact.sea.level.or.surge[i] + npvuln$High.impact.forest.pest[i])
-}
-
-
 risk_totals_npvuln <- risk_totals %>% 
   rename(ID = Park) %>% 
   left_join(Project.data,by="ID",all=T) %>% 
@@ -225,7 +235,7 @@ High impact assessment combined sea level rise and/or storm surge (1 indicates t
 
 \newpage
 
-```{r scatter,echo=FALSE, message=FALSE, fig.height = 7, fig.width = 10}
+```{r scatter,echo=FALSE, message=FALSE, fig.height = 7, fig.width = 10,eval=F}
 
 risk_scatter <- ggplot(risk_totals_all, aes(shira_risks,npv_risks)) +
   geom_point() +
@@ -241,7 +251,7 @@ risk_scatter
 ## Risk Maps
 The following maps show the number of risks identified by SHIRA and NPVuln. Project ID corresponds with those identified in the FY24-25 LRF Candidate Projects List.
 
-```{r risk count maps, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10}
+```{r risk count maps, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10, eval=FALSE}
 
 g3 <- ggplot() + 
   geom_sf(data = states,color="black",fill="tan") + 
@@ -270,7 +280,7 @@ g4
 
 ```
 ## Risk Count Summaries 
-```{r risk count summaries, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10}
+```{r risk count summaries, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10, eval=FALSE}
 
 g <- ggplot(risk_totals, aes(Risks,Park)) + 
   geom_col() +
@@ -293,9 +303,40 @@ g2
 ```
 
 \newpage
+# Summary Table
+
+```{r summary_table_1,echo=FALSE, message=FALSE,eval=FALSE}
+
+dset1 <- SHIRA_table %>% 
+  rename(
+    "Riverine Flooding (USGS)" = `Geophysical: Riverine Flooding (USGS analysis)`,
+    "Riverine Flooding (NFHL)" = `Geophysical: Riverine Flooding (National Flood Hazard Layer)`,
+    "Drought" = `Weather: Drought`,
+    "Extreme Heat" = `Weather: Extreme Heat`,
+    "Landslide" = `Geophysical: Landslide`,
+    "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`
+  ) 
+
+dset1$`Riverine Flooding (USGS)`[dset1$`Riverine Flooding (USGS)` == "Susceptible to Flooding"] <- "Susceptible"  
+dset1$`Riverine Flooding (NFHL)`[dset1$`Riverine Flooding (NFHL)` == "Susceptible to Flooding"] <- "Susceptible"  
+
+dset1 <- arrange(dset1, across(c(2:ncol(dset1)),desc))
+
+#knitr::kable(dset1)
+
+set_flextable_defaults(
+  font.family = "Arial", font.size = 8, 
+  border.color = "gray")
+
+flextable(dset1) %>% 
+  theme_vanilla() 
+
+
+
+```
 #SHIRA Summary Table
 
-```{r summary_table_1,echo=FALSE, message=FALSE}
+```{r summary_table_1,echo=FALSE, message=FALSE,eval=FALSE}
 
 dset1 <- SHIRA_table %>% 
   rename(
@@ -327,7 +368,7 @@ flextable(dset1) %>%
 
 \newpage
 #NPVuln Summary Table
-```{r summary_table_2,echo=FALSE, message=FALSE}
+```{r summary_table_2,echo=FALSE, message=FALSE,eval=FALSE}
 
 dset2 <- npvuln_table
 
