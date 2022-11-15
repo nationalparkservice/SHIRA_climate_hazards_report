@@ -29,17 +29,20 @@ GAOA.file <- "C:/Users/achildress/DOI/CCRP COLLABORATE! - CCRP COLLABORATE!/01 P
 
 Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candidate_Projects_for_CCVA.csv")) %>% drop_na() %>% 
   mutate(UNIT_CODE = Park, UNIT_CODE = recode(UNIT_CODE, 'SEKI' = 'SEQU', 'NACE' = 'NACA', 'NAMA' = 'NACA')) %>% 
-  left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE") %>% 
-   #Subsetting on 22-11-15 to rerun for final parks list
-   subset(Park %in% c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRYC", "SEKI", "CURE", "GRSA", "CHICK", "HAMP"))
+  left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE")
+
+parks <- c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")
+Project.data <- read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")) %>% 
+  subset(UNIT_CODE %in% parks)
+  
   
 
 Hazard.codes <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/Hazard_Codes.csv")) %>% filter(Type == "Class Breaks (1-5)")
 Hazards.lookup <- read.csv("./climate_hazards_lookup.csv")
 
 SHIRA.Hazards<-Hazards.lookup$SHIRA.Hazards[c(1,2,3,7,4)]
-NPVuln.Hazards<-Hazards.lookup$NPVuln.Hazards[c(3,4)]
-NPVuln.rename<-Hazards.lookup$NPVuln.rename[c(3,4)]
+NPVuln.Hazards<-Hazards.lookup$NPVuln.Hazards[c(1,2,3,4)]
+NPVuln.rename<-Hazards.lookup$NPVuln.rename[c(1,2,3,4)]
 
 ## FOrmatting Shira data tables
 Shira.hazard.names <- data.frame(Risk = c("No Hazard Exposure","Very Low","Low","Moderate","High","Very High"), Raw = seq(0,5,1))
@@ -82,7 +85,7 @@ Shira.data<- Shira.data %>%
            
 ## Formatting NPVuln data tables
 npvuln.data <- read.csv("./NPVuln_Park_Data.csv") %>% 
-  filter(code %in% unique(Project.data$Park)) %>% 
+  filter(code %in% unique(Project.data$UNIT_CODE)) %>% 
   select(code,Name, NPVuln.Hazards[grep("High", NPVuln.Hazards)]) %>% 
   rename(Park = code) %>% 
   rename_with(~str_remove(., 'High.impact.'))
@@ -99,7 +102,8 @@ npvuln.data<- npvuln.data %>%
 
 
 # Combined tables
-Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(5)],by=c("Park","Name"))
+# Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(7)],by=c("Park")) #omit columns that are sums
+Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(2,7)],by=c("Park"))
 
 Combined.data<- Combined.data %>% 
   mutate(sum_risk = rowSums(.[-c(1:4)]!=0,na.rm=TRUE))
