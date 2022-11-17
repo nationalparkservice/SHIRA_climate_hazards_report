@@ -33,7 +33,7 @@ Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candid
 
 parks <- c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")
 Project.data <- read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")) %>% 
-  subset(UNIT_CODE %in% parks)
+  subset(UNIT_CODE %in% parks) %>% filter(!duplicated(UNIT_CODE))
   
   
 
@@ -106,7 +106,8 @@ npvuln.data<- npvuln.data %>%
 Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(2,7)],by=c("Park"))
 
 Combined.data<- Combined.data %>% 
-  mutate(sum_risk = rowSums(.[-c(1:4)]!=0,na.rm=TRUE))
+  mutate(sum_risk = rowSums(.[-c(1:4)]!=0,na.rm=TRUE)) %>% 
+  filter(!duplicated(Park))
 
 Combined.climate.hazards <- rbind(Shira.climate.hazards,npvuln.climate.hazards) %>% arrange(Park)
 
@@ -180,6 +181,10 @@ This map shows the historic occurrence of drought for each week from 2000 to 202
 
 ## NPVuln Risk Descriptions:
 
+**Current and Future Fire**
+
+High impact assessment current and projected fire (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
 **Summer Drought**
 
 High impact assessment summer drought (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
@@ -225,12 +230,14 @@ dset1 <- Combined.data %>%
     "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`,
     "Drought" = `Weather: Drought`,
     "Summer Drought" = summer.drought,
+    "Current Fire" = current.fire,
+    "Future Fire" = projected.fire,
     "Sea Level or Surge" = sea.level.or.surge
   ) %>% 
  mutate(across("Riverine Flooding (NFHL)":"Drought", ~ case_when(. == 5 ~ "Very High",
                                              . == 4 ~ "High",
                                              . == 3 ~ "Moderate"))) %>% 
-  mutate(across("Summer Drought":"Sea Level or Surge", ~ case_when(. == 1 ~ "Susceptible"))) %>% 
+  mutate(across("Current Fire":"Sea Level or Surge", ~ case_when(. == 1 ~ "Susceptible"))) %>% 
   arrange(desc(sum_risk))
 
 #knitr::kable(dset1)
@@ -239,7 +246,7 @@ set_flextable_defaults(
   font.family = "Arial", font.size = 8, 
   border.color = "gray")
 
-flextable(dset1[,c(1:2,5:11)]) %>% 
+flextable(dset1[,c(1:2,5:13)]) %>% 
   theme_vanilla() 
 
 
