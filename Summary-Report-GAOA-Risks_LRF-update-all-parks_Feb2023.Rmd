@@ -27,13 +27,15 @@ Because the FY24-25 LRF list of candidate projects for NRSS climate change vulne
 ## These files will require manipulation to get down to a long-format df 
 GAOA.file <- "C:/Users/achildress/DOI/CCRP COLLABORATE! - CCRP COLLABORATE!/01 PROJECT Collaboration/Facilities/GAOA_SHIRA Reviewing/"
 
-Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candidate_Projects_for_CCVA.csv")) %>% drop_na() %>% 
+LRF_List <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candidate_Projects_for_CCVA.csv")) %>% drop_na() %>% 
   mutate(UNIT_CODE = Park, UNIT_CODE = recode(UNIT_CODE, 'SEKI' = 'SEQU', 'NACE' = 'NACA', 'NAMA' = 'NACA')) %>% 
   left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE")
 
-parks <- c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")
+parks<- unique(c(unique(LRF_List$Park),c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")))
+# parks <- c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")
 Project.data <- read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")) %>% 
-  subset(UNIT_CODE %in% parks) %>% filter(!duplicated(UNIT_CODE))
+  subset(UNIT_CODE %in% parks) %>%
+  filter(!duplicated(UNIT_CODE))
   
   
 
@@ -149,9 +151,9 @@ risk_totals <- risk_totals %>%
   rename(Risks = x)
 
 # synth map
+risk_totals <- Combined.data %>% select(c(Park,sum_risk))
 
-FY24_projs <- FY24_projs %>% 
-  mutate(Risks = risk_totals$Risk)
+FY24_projs <- FY24_projs %>% left_join(risk_totals)
 
 
 ```
@@ -204,13 +206,13 @@ The following map shows the number of risks identified by SHIRA and NPVuln for e
 g3 <- ggplot() + 
   geom_sf(data = states,color="black",fill="tan") + 
   geom_sf(data = PRVI,color="black",fill="tan")  +
-  geom_sf(data = FY24_projs,aes(size=Risks,fill=Risks),color="black", pch=21) +
+  geom_sf(data = FY24_projs,aes(size=sum_risk,fill=sum_risk),color="black", pch=21) +
    geom_label_repel(data = FY24_projs_coords, aes(x = Lat, y = Lon, label = Park),
                    size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
-  ggtitle("Major Climate Risks (SHIRA and NPVuln)") +
-  guides(fill="legend") +
+  ggtitle("Major Climate Risks (SHIRA and NPVuln)") + labs(fill="Risks", size="Risks") +
   coord_sf()+
-    theme(legend.position="bottom")
+    theme(legend.position="bottom") +
+  guides(fill = guide_legend(nrow = 1,byrow=TRUE)) 
 g3
 
 ```
