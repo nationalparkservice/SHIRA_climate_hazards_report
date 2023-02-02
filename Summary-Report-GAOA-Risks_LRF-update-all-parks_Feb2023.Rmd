@@ -1,0 +1,254 @@
+---
+title: "FY24-25 LRF Candidate Project Risks - Summary Report"
+author: "Climate Change Response Program"
+date: "`r Sys.Date()`"
+output:
+  word_document: 
+    reference_docx: "template.docx"
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F)
+```
+
+```{r load packages, include=FALSE}
+library(sf);library(tidyverse);library(flextable);library(ggrepel)
+```
+
+## Description
+
+This report uses data from the Strategic Hazard Identification and Risk Assessment [SHIRA](https://doimspp.sharepoint.com/sites/usgs-shira_home?CT=1662061010120&OR=OWA-NT&CID=0ee76a98-796e-fb71-9009-9b62065909ef&siteid=%7B1F7D3CEC-5199-4FCC-B48D-7547F7B5ECCC%7D&webid=%7B74AA7F54-8DFD-4C4D-89FC-656456FA443C%7D&uniqueid=%7B8E44D40A-4172-4C17-8F15-22787444980F%7D) tool and [NPVuln](https://www.nps.gov/subjects/climatechange/npvuln.htm) to identify potential climate change-related hazards for facility investment projects.
+
+Because the FY24-25 LRF list of candidate projects for NRSS climate change vulnerability assessments did not include FBMS facility coordinates, *these results represent park-level exposure.* Site-specific sensitivies can be assessed once coordinates are provided.
+
+```{r variable creation, include=FALSE}
+#Read in file data
+## These files will require manipulation to get down to a long-format df 
+GAOA.file <- "C:/Users/achildress/DOI/CCRP COLLABORATE! - CCRP COLLABORATE!/01 PROJECT Collaboration/Facilities/GAOA_SHIRA Reviewing/"
+
+Project.data <-read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/FY24-25_LRF_Candidate_Projects_for_CCVA.csv")) %>% drop_na() %>% 
+  mutate(UNIT_CODE = Park, UNIT_CODE = recode(UNIT_CODE, 'SEKI' = 'SEQU', 'NACE' = 'NACA', 'NAMA' = 'NACA')) %>% 
+  left_join(read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")),by="UNIT_CODE")
+
+parks <- c("GATE", "MACA", "SAGA", "VOYA", "JEFF", "BRCA", "SEKI", "CURE", "GRSA", "CHIC", "HAMP")
+Project.data <- read.csv(paste0(GAOA.file,"GIS_files/nps_boundary_centroids/nps_boundary_centroids.csv")) %>% 
+  subset(UNIT_CODE %in% parks) %>% filter(!duplicated(UNIT_CODE))
+  
+  
+
+Hazard.codes <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/Hazard_Codes.csv")) %>% filter(Type == "Class Breaks (1-5)")
+Hazards.lookup <- read.csv("./climate_hazards_lookup.csv")
+
+SHIRA.Hazards<-Hazards.lookup$SHIRA.Hazards[c(1,2,3,7,4)]
+NPVuln.Hazards<-Hazards.lookup$NPVuln.Hazards[c(1,2,3,4)]
+NPVuln.rename<-Hazards.lookup$NPVuln.rename[c(1,2,3,4)]
+
+## FOrmatting Shira data tables
+Shira.hazard.names <- data.frame(Risk = c("No Hazard Exposure","Very Low","Low","Moderate","High","Very High"), Raw = seq(0,5,1))
+
+
+Shira.data <- read.csv(paste0(GAOA.file,"FY24-25_LRF_Hazards/PAM_Owned Buildings and Structures.csv")) %>% filter(Bureau_alt == "NPS") %>% 
+  select(-contains("VAL")) %>%
+  rename_with(.cols = Hazard.codes$Hazard.Code, .fn = function(x) Hazard.codes$Name[Hazard.codes$Hazard.Code %in% x]) %>% 
+  rename(UNIT_CODE = Installati) %>% mutate(Shira.ID = row_number())
+
+# There's probably a better way to subset Shira to closest lat/lon of Project data but this is what worked...
+closest_Shira <- function(lat, lon) {
+  index <- which.min(sqrt((Shira.data$Latitude-lat)^2 + (Shira.data$Longitude-lon)^2)) # less precise but likely good enough
+  Shira.data[index,]$Shira.ID
+}
+
+for (i in 1:nrow(Project.data)){
+  Project.data$Shira.ID[i] <- closest_Shira(Project.data$Lat[i], Project.data$Lon[i])
+}
+
+Shira.data <- Shira.data %>% filter(Shira.ID %in% Project.data$Shira.ID) %>% 
+  rename(Park=UNIT_CODE, Name=Business_1) %>% 
+  select(c("Park", "Name", Latitude,Longitude, as.character(SHIRA.Hazards[SHIRA.Hazards!=""]))) %>% 
+    mutate(across(5:9,
+                .fns = ~case_when(. < 3 ~ as.numeric(0),
+                                  TRUE ~ as.numeric(.x))))
+
+Shira.climate.hazards <- Shira.data %>% 
+  # left_join(Project.data[,c("ID","Shira.ID")], by="Shira.ID")  %>% 
+  pivot_longer(-c(1:4), values_to = "Raw", names_to = "Hazard") %>% 
+  filter(Hazard %in% SHIRA.Hazards) %>% 
+  left_join(Shira.hazard.names,by="Raw") %>% 
+  select(Park,Latitude,Longitude,Hazard,Risk,Raw) %>% 
+  # rename(Park=UNIT_CODE,State=STATE)%>% 
+  mutate(Risk = ifelse((grepl("Geophysical", Hazard, fixed=TRUE) & Raw==5), "Susceptible", Risk))
+
+
+Shira.data<- Shira.data %>% 
+  mutate(sum_risk = rowSums(.[-c(1:4)]!=0))
+           
+## Formatting NPVuln data tables
+npvuln.data <- read.csv("./NPVuln_Park_Data.csv") %>% 
+  filter(code %in% unique(Project.data$UNIT_CODE)) %>% 
+  select(code,Name, NPVuln.Hazards[grep("High", NPVuln.Hazards)]) %>% 
+  rename(Park = code) %>% 
+  rename_with(~str_remove(., 'High.impact.'))
+
+
+npvuln.climate.hazards <- npvuln.data %>% 
+  pivot_longer(-c(1:2), values_to = "Raw", names_to = "Hazard") %>% 
+  mutate(Risk = ifelse(Raw==1, "Susceptible", "Not susceptible")) %>% 
+  select(Park,Hazard,Risk,Raw)
+npvuln.climate.hazards <- left_join(Shira.climate.hazards[,c("Park","Latitude","Longitude")],npvuln.climate.hazards,by="Park")
+
+npvuln.data<- npvuln.data %>% 
+  mutate(sum_risk = rowSums(.[-c(1:2)]!=0))
+
+
+# Combined tables
+# Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(7)],by=c("Park")) #omit columns that are sums
+Combined.data <- left_join(Shira.data[,-c(10)],npvuln.data[,-c(2,7)],by=c("Park"))
+
+Combined.data<- Combined.data %>% 
+  mutate(sum_risk = rowSums(.[-c(1:4)]!=0,na.rm=TRUE)) %>% 
+  filter(!duplicated(Park))
+
+Combined.climate.hazards <- rbind(Shira.climate.hazards,npvuln.climate.hazards) %>% arrange(Park)
+
+
+#Summary maps
+## GIS files
+regions <- st_read(paste0(GAOA.file,"GIS_files/nps-regions/nps-regions.shp"))
+regions <-  st_transform(x=regions,crs = "NAD83")
+region_geometry <- st_geometry(regions)
+
+states <- st_read(paste0(GAOA.file,"GIS_files/State_Shapefile/States_NAD83_Albers.shp"))
+states <- st_transform(x=states,crs = "NAD83")
+states_geometry <- st_geometry(states)
+
+PRVI <- st_read(paste0(GAOA.file,"GIS_files/PR_VI/PR_VI.shp"))
+PRVI <- st_transform(x=PRVI,crs = "NAD83")
+PRVI_geometry <- st_geometry(PRVI)
+
+point_crs <- st_crs(regions)
+
+## Format tables 
+
+FY24_projs <- st_as_sf(Combined.climate.hazards, coords = c("Longitude", "Latitude"), crs = point_crs)
+
+FY24_projs <- distinct(FY24_projs, Park,.keep_all = T)
+
+
+FY24_projs_coords <- extract(FY24_projs, geometry, into = c('Lat', 'Lon'), '\\((.*),(.*)\\)', conv = T)
+FY24_projs_coords <- FY24_projs_coords[ -c(8) ]
+
+
+# risk count summaries
+risk_count <- Combined.climate.hazards %>% 
+  mutate(count = if_else(Raw >2, 1, 0))
+  
+risk_totals <- aggregate(risk_count$count, by=list(Park=risk_count$Park), FUN=sum)
+
+risk_totals <- risk_totals %>% 
+  rename(Risks = x)
+
+# synth map
+
+FY24_projs <- FY24_projs %>% 
+  mutate(Risks = risk_totals$Risk)
+
+
+```
+
+# Major Risks for FY24-25 LRF Candidate Projects
+
+# **Risk Descriptions**
+## SHIRA Risk Descriptions:
+
+**Geophysical: Riverine Flooding (National Flood Hazard Layer)**	
+
+This map shows flood hazard zones contained in the Federal Emergency Management Agency (FEMA) National Flood Hazard Layer (NFHL), which is a geospatial database that contains current effective flood hazard data to support the National Flood Insurance Program (NFIP). The NFHL is designed only to support the NFIP; therefore, its coverage on DOI and tribal lands of interest is limited due to the lack of flood insurance on federal lands. Polygonal NFHL data were acquired via the FEMA Map Service Center. Based on FEMA guidance, flood-hazard zones were classified as low to moderate flood risk for areas delineated as a 0.2-percent-annual-chance (or 500-year) flood and as high flood risk for floodways and areas with 1-percent annual chance (or 100-year) flood. Areas are noted as "susceptible to flooding" in this map if they are identified as high flood risk areas in the NFHL data (zones A and V and subclasses) and are classified as a "5" in the SHIRA relative hazard ranking scale of 1 to 5 (i.e., noting simply the presence of that hazard). Data are available for the conterminous United States, Alaska, Hawaii, Puerto Rico, and U.S. Territories.
+
+**Geophysical: Riverine Flooding (USGS analysis)**	
+
+This map shows areas susceptible to flooding based on USGS modeling of 30-meter digital elevation models, stream network lines, associated basins, flow direction grids, and National Water Model Maximum Flows for the last 20 years for all available flow lines. The geospatial input data used in the USGS flood modeling can be found in the National Hydrography Dataset (NHD Plus version 2). Areas are noted as "susceptible to flooding" and are classified as a "5" in the SHIRA relative hazard ranking scale of 1 to 5 (i.e., noting simply the presence of that hazard). Data are available for the conterminous United States.
+
+**Geophysical: Landslide**	
+
+This map shows a prototype landslide hazard map of the conterminous United States that was developed by the USGS Landslide Hazards Program and originally published in 2012 as a journal article. The data is presented as 1-km grid cells, which denote the presence or absence of conditions that are favorable for landslides. Grid cells considered to have a landslide hazard were classified as a “5” on a relative 1 to 5 scale (i.e., noting simply the presence of that high hazard). Data are available for the conterminous United States.
+
+**Weather: Drought**	
+
+This map shows the historic occurrence of drought for each week from 2000 to 2021. Only areas classified as moderate, severe, extreme, and exceptional are included in the analysis. Original data come from the Drought Monitor, which is produced jointly by the National Drought Mitigation Center (NDMC) at the University of Nebraska-Lincoln, The National Oceanic and Atmospheric Administration (NOAA), and the U.S. Department of Agriculture (USDA). Data are aggregated at approximately the county level and classified using five equal interval bins to show historic occurrence across the United States. Counties are labelled as having a very low (bin 1), low (bin 2), moderate (bin 3), high (bin 4), or very high (bin 5) number of droughts during this time period.Data are available for the conterminous United States, Alaska, Hawaii, Puerto Rico, and U.S. Territories.
+
+
+
+## NPVuln Risk Descriptions:
+
+**Current and Future Fire**
+
+High impact assessment current and projected fire (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Summer Drought**
+
+High impact assessment summer drought (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+**Sea Level or Storm Surge**
+
+High impact assessment combined sea level rise and/or storm surge (1 indicates that park met the designated threshold and is considered "at risk" for that vulnerability factor)
+
+
+\newpage
+
+## Risk Maps
+The following map shows the number of risks identified by SHIRA and NPVuln for each park under consideration. Eventually, more precise risk evaluation will need to be performed at the site level. 
+
+```{r risk count maps, echo=FALSE, results='hide', message=FALSE, fig.height = 7, fig.width = 10}
+
+g3 <- ggplot() + 
+  geom_sf(data = states,color="black",fill="tan") + 
+  geom_sf(data = PRVI,color="black",fill="tan")  +
+  geom_sf(data = FY24_projs,aes(size=Risks,fill=Risks),color="black", pch=21) +
+   geom_label_repel(data = FY24_projs_coords, aes(x = Lat, y = Lon, label = Park),
+                   size = 1.5,min.segment.length = 0, segment.color = 'grey50', max.overlaps = getOption("ggrepel.max.overlaps", default = 99),show.legend=F) +
+  ggtitle("Major Climate Risks (SHIRA and NPVuln)") +
+  guides(fill="legend") +
+  coord_sf()+
+    theme(legend.position="bottom")
+g3
+
+```
+
+
+
+# Summary Table
+The following table summarizes the Shira and NPVuln risks for each park. Shira variables (Flooding to Drought) are ordinal and risk levels are indicated from "Moderate" to "Very High". NPVuln variables (Summer Drought & Sea Level Rise) are binary and either 'Susceptible" or not.
+
+```{r summary_table_1,echo=FALSE, message=FALSE}
+
+dset1 <- Combined.data %>% 
+  rename(
+    "Riverine Flooding (USGS)" = `Geophysical: Riverine Flooding (USGS analysis)`,
+    "Riverine Flooding (NFHL)" = `Geophysical: Riverine Flooding (National Flood Hazard Layer)`,
+    "Landslide" = `Geophysical: Landslide`,
+    "Karst-related Subsidence" = `Geophysical: Karst-related Subsidence`,
+    "Drought" = `Weather: Drought`,
+    "Summer Drought" = summer.drought,
+    "Current Fire" = current.fire,
+    "Future Fire" = projected.fire,
+    "Sea Level or Surge" = sea.level.or.surge
+  ) %>% 
+ mutate(across("Riverine Flooding (NFHL)":"Drought", ~ case_when(. == 5 ~ "Very High",
+                                             . == 4 ~ "High",
+                                             . == 3 ~ "Moderate"))) %>% 
+  mutate(across("Current Fire":"Sea Level or Surge", ~ case_when(. == 1 ~ "Susceptible"))) %>% 
+  arrange(desc(sum_risk))
+
+#knitr::kable(dset1)
+
+set_flextable_defaults(
+  font.family = "Arial", font.size = 8, 
+  border.color = "gray")
+
+flextable(dset1[,c(1:2,5:13)]) %>% 
+  theme_vanilla() 
+
+
+
+```
